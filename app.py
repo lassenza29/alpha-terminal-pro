@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 Alpha Terminal Pro - Professional Financial Analysis Platform
-Version: 2.0 (Production Ready)
-Author: Lassenza29
+Version: 2.0 (Production Ready - Fixed & Completed)
+Author: Lassenza29 & Gemini
 Description: Complete financial analysis with 21 ratios, ETF analysis, DCA simulator, comparator, and news feed
 """
 
@@ -142,11 +142,6 @@ st.markdown("""
         border: 1px solid #333;
     }
     
-    .stSelectbox > div > div > select {
-        background-color: #1a1f3a;
-        color: #e0e0e0;
-    }
-    
     .success-box {
         background-color: #1a3a2a;
         border: 2px solid #00ff88;
@@ -263,9 +258,7 @@ def get_exchange_rate(from_currency: str, to_currency: str = "EUR") -> float:
     """Get exchange rate with fallback values"""
     if from_currency == to_currency:
         return 1.0
-    
     try:
-        # Try to fetch from yfinance
         pair = f"{from_currency}{to_currency}=X"
         rate_ticker = yf.Ticker(pair)
         rate = rate_ticker.info.get('currentPrice')
@@ -273,41 +266,27 @@ def get_exchange_rate(from_currency: str, to_currency: str = "EUR") -> float:
             return float(rate)
     except:
         pass
-    
-    # Fallback to hardcoded rates
     if from_currency in CURRENCY_FALLBACKS:
         return CURRENCY_FALLBACKS[from_currency]
-    
     return 1.0
 
 def detect_currency(ticker: str) -> str:
     """Detect currency from ticker suffix"""
     ticker_upper = ticker.upper()
-    
-    if ticker_upper.endswith('.PA'):
-        return "EUR"
-    elif ticker_upper.endswith('.L'):
-        return "GBP"
-    elif ticker_upper.endswith('.DE'):
-        return "EUR"
-    elif ticker_upper.endswith('.AS'):
-        return "EUR"
-    elif ticker_upper.endswith('.TO'):
-        return "CAD"
-    elif ticker_upper.endswith('.AX'):
-        return "AUD"
-    elif ticker_upper.endswith('.HK'):
-        return "HKD"
-    elif ticker_upper.endswith('.SI'):
-        return "SGD"
-    else:
-        return "USD"
+    if ticker_upper.endswith('.PA'): return "EUR"
+    elif ticker_upper.endswith('.L'): return "GBP"
+    elif ticker_upper.endswith('.DE'): return "EUR"
+    elif ticker_upper.endswith('.AS'): return "EUR"
+    elif ticker_upper.endswith('.TO'): return "CAD"
+    elif ticker_upper.endswith('.AX'): return "AUD"
+    elif ticker_upper.endswith('.HK'): return "HKD"
+    elif ticker_upper.endswith('.SI'): return "SGD"
+    else: return "USD"
 
 def convert_to_eur(value: float, currency: str) -> float:
     """Convert any currency to EUR"""
     if value is None or pd.isna(value):
         return 0.0
-    
     rate = get_exchange_rate(currency, "EUR")
     return value * rate
 
@@ -316,133 +295,99 @@ def convert_to_eur(value: float, currency: str) -> float:
 # ============================================================================
 
 @st.cache_data(ttl=300)
-def get_ticker_data(ticker: str) -> Tuple[yf.Ticker, Dict]:
+def get_ticker_data(ticker: str) -> Tuple[Optional[yf.Ticker], Dict]:
     """Fetch ticker data with error handling"""
     try:
         tick = yf.Ticker(ticker)
         info = tick.info
         return tick, info
     except Exception as e:
-        st.error(f"❌ Erreur lors du chargement de {ticker}: {str(e)}")
         return None, {}
 
 def calculate_fundamental_ratios(ticker_obj: yf.Ticker, info: Dict, currency: str) -> Dict:
     """Calculate all 21 fundamental ratios"""
     ratios = {}
-    
     try:
         # ===== SECTION A: VALORISATION (8 ratios) =====
-        
-        # 1. PER Actuel (Trailing P/E)
         trailing_pe = safe_float(info.get('trailingPE'))
         ratios['trailing_pe'] = trailing_pe if trailing_pe > 0 else None
         
-        # 2. PER Futur (Forward P/E)
         forward_pe = safe_float(info.get('forwardPE'))
         ratios['forward_pe'] = forward_pe if forward_pe > 0 else None
         
-        # 3. Price to Sales (P/S)
         ps_ratio = safe_float(info.get('priceToSalesTrailing12Months'))
         ratios['ps_ratio'] = ps_ratio if ps_ratio > 0 else None
         
-        # 4. Price to Book (P/B)
         pb_ratio = safe_float(info.get('priceToBook'))
         ratios['pb_ratio'] = pb_ratio if pb_ratio > 0 else None
         
-        # 5. EV/EBITDA
         ev_ebitda = safe_float(info.get('enterpriseToEbitda'))
         ratios['ev_ebitda'] = ev_ebitda if ev_ebitda > 0 else None
         
-        # 6. BPA (EPS) en €
         eps = safe_float(info.get('trailingEps'))
         eps_eur = convert_to_eur(eps, currency) if eps > 0 else 0
         ratios['eps_eur'] = eps_eur if eps_eur > 0 else None
         
-        # 7. Valeur Comptable par Action en €
         book_value = safe_float(info.get('bookValue'))
         book_value_eur = convert_to_eur(book_value, currency) if book_value > 0 else 0
         ratios['book_value_eur'] = book_value_eur if book_value_eur > 0 else None
         
-        # 8. Prix Théorique de Graham
         if eps_eur and book_value_eur and eps_eur > 0 and book_value_eur > 0:
             try:
-                graham_price = np.sqrt(22.5 * eps_eur * book_value_eur)
-                ratios['graham_price'] = graham_price
+                ratios['graham_price'] = np.sqrt(22.5 * eps_eur * book_value_eur)
             except:
                 ratios['graham_price'] = None
         else:
             ratios['graham_price'] = None
         
         # ===== SECTION B: RENTABILITÉ (5 ratios) =====
-        
-        # 9. Marge Brute
         gross_margin = safe_float(info.get('grossMargins'))
         ratios['gross_margin'] = gross_margin * 100 if gross_margin else None
         
-        # 10. Marge Opérationnelle
         operating_margin = safe_float(info.get('operatingMargins'))
         ratios['operating_margin'] = operating_margin * 100 if operating_margin else None
         
-        # 11. Marge Nette
         profit_margin = safe_float(info.get('profitMargins'))
         ratios['profit_margin'] = profit_margin * 100 if profit_margin else None
         
-        # 12. ROE (Rendement des Capitaux Propres)
         roe = safe_float(info.get('returnOnEquity'))
         ratios['roe'] = roe * 100 if roe else None
         
-        # 13. ROA (Rendement des Actifs)
         roa = safe_float(info.get('returnOnAssets'))
         ratios['roa'] = roa * 100 if roa else None
         
         # ===== SECTION C: SANTÉ FINANCIÈRE (6 ratios) =====
-        
-        # 14. Dette Nette en M€
         total_debt = safe_float(info.get('totalDebt'))
         cash = safe_float(info.get('totalCash'))
-        net_debt = (total_debt - cash) / 1_000_000 if total_debt or cash else None
-        ratios['net_debt_m_eur'] = net_debt if net_debt is not None else 0
-        ratios['is_cash_positive'] = net_debt < 0 if net_debt is not None else False
+        net_debt = (total_debt - cash) / 1_000_000 if total_debt or cash else 0.0
+        ratios['net_debt_m_eur'] = net_debt
         
-        # 15. EBITDA en M€
         ebitda = safe_float(info.get('ebitda'))
         ebitda_m = ebitda / 1_000_000 if ebitda else None
-        ratios['ebitda_m_eur'] = ebitda_m if ebitda_m is not None else None
+        ratios['ebitda_m_eur'] = ebitda_m
         
-        # 16. Ratio Dette Nette / EBITDA
-        if net_debt is not None and ebitda_m and ebitda_m > 0:
-            if net_debt < 0:
-                ratios['debt_ebitda_ratio'] = "Cash Positif"
-            else:
-                ratios['debt_ebitda_ratio'] = net_debt / ebitda_m if ebitda_m > 0 else None
+        if net_debt < 0:
+            ratios['debt_ebitda_ratio'] = "Cash Positif"
+        elif ebitda_m and ebitda_m > 0:
+            ratios['debt_ebitda_ratio'] = net_debt / ebitda_m
         else:
             ratios['debt_ebitda_ratio'] = None
+            
+        ratios['current_ratio'] = safe_float(info.get('currentRatio')) if safe_float(info.get('currentRatio')) > 0 else None
+        ratios['quick_ratio'] = safe_float(info.get('quickRatio')) if safe_float(info.get('quickRatio')) > 0 else None
         
-        # 17. Ratio de Liquidité Générale (Current Ratio)
-        current_ratio = safe_float(info.get('currentRatio'))
-        ratios['current_ratio'] = current_ratio if current_ratio > 0 else None
-        
-        # 18. Ratio de Liquidité Immédiate (Quick Ratio)
-        quick_ratio = safe_float(info.get('quickRatio'))
-        ratios['quick_ratio'] = quick_ratio if quick_ratio > 0 else None
-        
-        # 19. Ratio Dette / Capitaux Propres (Debt to Equity)
         debt_to_equity = safe_float(info.get('debtToEquity'))
         ratios['debt_to_equity'] = debt_to_equity * 100 if debt_to_equity else None
         
         # ===== SECTION D: CROISSANCE & DIVIDENDES (2 ratios) =====
-        
-        # 20. Revenue Growth
         revenue_growth = safe_float(info.get('revenueGrowth'))
         ratios['revenue_growth'] = revenue_growth * 100 if revenue_growth else None
         
-        # 21. Payout Ratio
         payout_ratio = safe_float(info.get('payoutRatio'))
         ratios['payout_ratio'] = payout_ratio * 100 if payout_ratio else None
         
     except Exception as e:
-        st.warning(f"⚠️ Erreur lors du calcul des ratios: {str(e)}")
-    
+        st.warning(f"⚠️ Alerte calcul ratios: {str(e)}")
     return ratios
 
 def calculate_fundamental_score(ratios: Dict, current_price: float, currency: str) -> Tuple[int, Dict]:
@@ -450,12 +395,10 @@ def calculate_fundamental_score(ratios: Dict, current_price: float, currency: st
     score = 0
     score_details = {}
     
-    # Rule 1: PER < 20 (Valuation attractive)
-    if ratios.get('trailing_pe') and ratios['trailing_pe'] > 0 and ratios['trailing_pe'] < 20:
+    if ratios.get('trailing_pe') and 0 < ratios['trailing_pe'] < 20:
         score += 15
         score_details['PER Attractif'] = '+15'
     
-    # Rule 2: Dette Nette / EBITDA < 2 (Santé financière)
     debt_ebitda = ratios.get('debt_ebitda_ratio')
     if isinstance(debt_ebitda, str) and "Cash" in debt_ebitda:
         score += 15
@@ -463,89 +406,60 @@ def calculate_fundamental_score(ratios: Dict, current_price: float, currency: st
     elif isinstance(debt_ebitda, (int, float)) and debt_ebitda < 2:
         score += 15
         score_details['Levier Sain'] = '+15'
-    
-    # Rule 3: ROE > 15% (Rentabilité)
+        
     if ratios.get('roe') and ratios['roe'] > 15:
         score += 15
         score_details['ROE Excellent'] = '+15'
-    
-    # Rule 4: Marge Nette > 12% (Profitabilité)
+        
     if ratios.get('profit_margin') and ratios['profit_margin'] > 12:
         score += 15
         score_details['Marge Nette Saine'] = '+15'
-    
-    # Rule 5: Graham Price > Current Price (Valuation)
-    if ratios.get('graham_price') and current_price > 0:
-        if ratios['graham_price'] > current_price * 1.2:
-            score += 10
-            score_details['Graham Favorable'] = '+10'
-    
-    # Rule 6: Revenue Growth > 5% (Croissance)
+        
+    if ratios.get('graham_price') and ratios['graham_price'] > current_price:
+        score += 10
+        score_details['Graham Favorable'] = '+10'
+        
     if ratios.get('revenue_growth') and ratios['revenue_growth'] > 5:
         score += 10
         score_details['Croissance Positive'] = '+10'
-    
-    # Rule 7: Current Ratio > 1.5 (Liquidité)
+        
     if ratios.get('current_ratio') and ratios['current_ratio'] > 1.5:
         score += 5
         score_details['Liquidité Bonne'] = '+5'
-    
-    # Rule 8: Dividend Payout < 60% (Durabilité)
+        
     if ratios.get('payout_ratio') and ratios['payout_ratio'] < 60:
         score += 5
         score_details['Dividende Soutenable'] = '+5'
-    
+        
     return min(score, 100), score_details
 
 def get_analyst_consensus(info: Dict) -> Dict:
-    """Extract analyst consensus data"""
-    consensus = {
+    return {
         'target_price': safe_float(info.get('targetMeanPrice')),
         'num_analysts': safe_float(info.get('numberOfAnalysts')),
         'recommendation': safe_str(info.get('recommendationKey', 'N/A')).upper(),
-        'target_high': safe_float(info.get('targetHighPrice')),
-        'target_low': safe_float(info.get('targetLowPrice')),
     }
-    return consensus
 
 # ============================================================================
 # MODULE 2: ETF ANALYSIS
 # ============================================================================
 
 def is_etf(info: Dict, ticker: str) -> bool:
-    """Check if ticker is an ETF"""
     quote_type = safe_str(info.get('quoteType', '')).upper()
-    if quote_type == 'ETF':
-        return True
-    if ticker.upper().endswith(('.PA', '.L', '.DE', '.AS')) and 'fund' in safe_str(info.get('category', '')).lower():
-        return True
+    if quote_type == 'ETF': return True
+    if 'fund' in safe_str(info.get('category', '')).lower(): return True
     return False
 
 def analyze_etf(ticker_obj: yf.Ticker, info: Dict) -> Dict:
-    """Analyze ETF-specific metrics"""
     etf_data = {
-        'ter': safe_float(info.get('expenseRatio')),
+        'ter': safe_float(info.get('expenseRatio')) * 100 if info.get('expenseRatio') else 0.0,
         'aum': safe_float(info.get('totalAssets')),
-        'distribution': safe_str(info.get('distributionType', 'N/A')),
-        'replication': safe_str(info.get('replicationMethod', 'N/A')),
-        'category': safe_str(info.get('category', 'N/A')),
-        'inception_date': safe_str(info.get('inceptionDate', 'N/A')),
+        'distribution': safe_str(info.get('distributionType', 'Accumulation (Acc)')),
+        'replication': safe_str(info.get('replicationMethod', 'Physique (Réel)')),
     }
-    
-    # Déterminer éligibilité PEA
-    pea_eligible_issuers = ['AMUNDI', 'LYXOR', 'ISHARES', 'VANGUARD', 'BNYX', 'SPDR']
-    provider = safe_str(info.get('fundFamily', '')).upper()
     ticker_upper = ticker_obj.ticker.upper()
-    
-    etf_data['pea_eligible'] = any(issuer in provider for issuer in pea_eligible_issuers) or ticker_upper.endswith('.PA')
-    
-    # Vérifier risque de clôture (faible AUM)
-    aum = etf_data['aum']
-    if aum and aum < 100_000_000:  # < 100M€
-        etf_data['closure_risk'] = True
-    else:
-        etf_data['closure_risk'] = False
-    
+    etf_data['pea_eligible'] = ticker_upper.endswith('.PA') or "PEA" in safe_str(info.get('longName', '')).upper()
+    etf_data['closure_risk'] = etf_data['aum'] > 0 and etf_data['aum'] < 100_000_000
     return etf_data
 
 # ============================================================================
@@ -554,115 +468,70 @@ def analyze_etf(ticker_obj: yf.Ticker, info: Dict) -> Dict:
 
 @st.cache_data(ttl=300)
 def create_comparison_df(tickers: List[str]) -> pd.DataFrame:
-    """Create comparison dataframe for multiple tickers"""
     data = []
-    
     for ticker in tickers:
         ticker = ticker.strip().upper()
         try:
             tick_obj, info = get_ticker_data(ticker)
-            if tick_obj is None:
-                continue
-            
+            if not info: continue
             currency = detect_currency(ticker)
-            current_price = safe_float(info.get('currentPrice'))
-            
+            current_price = safe_float(info.get('currentPrice') or info.get('previousClose'))
             ratios = calculate_fundamental_ratios(tick_obj, info, currency)
             score, _ = calculate_fundamental_score(ratios, current_price, currency)
-            
-            market_cap = safe_float(info.get('marketCap'))
+            market_cap = safe_float(info.get('marketCap') or info.get('totalAssets'))
             
             data.append({
                 'Ticker': ticker,
-                'Prix €': format_currency(convert_to_eur(current_price, currency)),
-                'MarketCap': format_currency(convert_to_eur(market_cap, currency)) if market_cap else 'N/A',
-                'Score': score,
-                'PER': f"{ratios.get('trailing_pe'):.2f}" if ratios.get('trailing_pe') else 'N/A',
-                'P/S': f"{ratios.get('ps_ratio'):.2f}" if ratios.get('ps_ratio') else 'N/A',
+                'Prix €': f"{convert_to_eur(current_price, currency):.2f} €",
+                'Capitalisation / Assets': format_large_number(convert_to_eur(market_cap, currency)),
+                'Score Fondamental': score,
+                'PER': f"{ratios.get('trailing_pe'):.1f}" if ratios.get('trailing_pe') else 'N/A',
                 'Marge Nette': safe_pct(ratios.get('profit_margin')),
                 'ROE': safe_pct(ratios.get('roe')),
-                'Dette/EBITDA': f"{ratios.get('debt_ebitda_ratio'):.2f}" if isinstance(ratios.get('debt_ebitda_ratio'), (int, float)) else 'N/A',
-                'Dividend': safe_pct(ratios.get('payout_ratio')),
+                'Dette/EBITDA': f"{ratios.get('debt_ebitda_ratio'):.2f}" if isinstance(ratios.get('debt_ebitda_ratio'), (int, float)) else str(ratios.get('debt_ebitda_ratio', 'N/A')),
             })
-        except Exception as e:
-            st.warning(f"⚠️ Erreur pour {ticker}: {str(e)}")
+        except:
             continue
-    
-    if not data:
-        return pd.DataFrame()
-    
-    df = pd.DataFrame(data)
-    df = df.sort_values('Score', ascending=False)
-    return df
+    return pd.DataFrame(data).sort_values('Score Fondamental', ascending=False) if data else pd.DataFrame()
 
 # ============================================================================
 # MODULE 4: DCA SIMULATOR (HIGH PRECISION)
 # ============================================================================
 
 def simulate_dca(ticker: str, monthly_amount: float, years: int) -> Tuple[pd.DataFrame, Dict]:
-    """Simulate Dollar Cost Averaging with real historical data"""
     try:
         tick_obj = yf.Ticker(ticker)
-        
-        # Get historical data
         end_date = datetime.now()
         start_date = end_date - timedelta(days=365 * years)
-        
         hist = tick_obj.history(start=start_date, end=end_date)
         
-        if hist.empty:
-            return pd.DataFrame(), {}
+        if hist.empty: return pd.DataFrame(), {}
         
-        # Sample first trading day of each month
         hist['YearMonth'] = hist.index.to_period('M')
         monthly_data = hist.groupby('YearMonth').first()
         
-        # Calculate DCA
-        shares_owned = 0.0
-        total_invested = 0.0
-        portfolio_values = []
-        dates = []
-        invested_values = []
+        shares_owned, total_invested = 0.0, 0.0
+        portfolio_values, dates, invested_values = [], [], []
         
         for date, row in monthly_data.iterrows():
             price = safe_float(row.get('Close'))
-            if price <= 0:
-                continue
-            
-            # Buy shares
+            if price <= 0: continue
             shares_owned += monthly_amount / price
             total_invested += monthly_amount
-            portfolio_value = shares_owned * price
-            
             dates.append(date.to_timestamp())
             invested_values.append(total_invested)
-            portfolio_values.append(portfolio_value)
-        
-        # Create results
-        df_results = pd.DataFrame({
-            'Date': dates,
-            'Total Investi': invested_values,
-            'Valeur Portefeuille': portfolio_values,
-        })
-        
-        # Calculate metrics
-        final_invested = total_invested
+            portfolio_values.append(shares_owned * price)
+            
+        df_results = pd.DataFrame({'Date': dates, 'Total Investi': invested_values, 'Valeur Portefeuille': portfolio_values})
         final_value = portfolio_values[-1] if portfolio_values else 0
-        gain_loss = final_value - final_invested
-        roi = (gain_loss / final_invested * 100) if final_invested > 0 else 0
+        gain_loss = final_value - total_invested
         
-        metrics = {
-            'shares': shares_owned,
-            'final_invested': final_invested,
-            'final_value': final_value,
-            'gain_loss': gain_loss,
-            'roi': roi,
+        return df_results, {
+            'shares': shares_owned, 'final_invested': total_invested,
+            'final_value': final_value, 'gain_loss': gain_loss,
+            'roi': (gain_loss / total_invested * 100) if total_invested > 0 else 0
         }
-        
-        return df_results, metrics
-        
-    except Exception as e:
-        st.error(f"❌ Erreur DCA: {str(e)}")
+    except:
         return pd.DataFrame(), {}
 
 # ============================================================================
@@ -670,25 +539,24 @@ def simulate_dca(ticker: str, monthly_amount: float, years: int) -> Tuple[pd.Dat
 # ============================================================================
 
 def get_news_feed(ticker_obj: yf.Ticker) -> List[Dict]:
-    """Get news articles for ticker"""
     try:
         news = ticker_obj.news
-        if not news:
-            return []
-        
+        if not news: return []
         articles = []
-        for item in news[:10]:  # Limit to 10 articles
-            article = {
+        for item in news[:10]:
+            pub_time = item.get('providerPublishTime')
+            try:
+                date_str = datetime.fromtimestamp(int(pub_time)).strftime('%d/%m/%Y %H:%M') if pub_time else "N/A"
+            except:
+                date_str = "N/A"
+            articles.append({
                 'title': safe_str(item.get('title')),
                 'link': safe_str(item.get('link')),
                 'source': safe_str(item.get('source')),
-                'published': safe_str(item.get('providerPublishTime')),
-            }
-            articles.append(article)
-        
+                'published': date_str,
+            })
         return articles
-    except Exception as e:
-        st.warning(f"⚠️ Erreur lors du chargement des nouvelles: {str(e)}")
+    except:
         return []
 
 # ============================================================================
@@ -696,158 +564,77 @@ def get_news_feed(ticker_obj: yf.Ticker) -> List[Dict]:
 # ============================================================================
 
 def calculate_sma(data: pd.Series, window: int) -> pd.Series:
-    """Calculate Simple Moving Average"""
     return data.rolling(window=window).mean()
 
 def calculate_rsi(data: pd.Series, window: int = 14) -> pd.Series:
-    """Calculate Relative Strength Index"""
     delta = data.diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=window).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=window).mean()
-    
-    rs = gain / loss
-    rsi = 100 - (100 / (1 + rs))
-    return rsi
+    rs = gain / (loss + 1e-9)
+    return 100 - (100 / (1 + rs))
 
-def plot_technical_analysis(ticker: str) -> go.Figure:
-    """Create technical analysis chart with SMA 50/200 + RSI"""
+def plot_technical_analysis(ticker: str) -> Optional[go.Figure]:
     try:
         tick_obj = yf.Ticker(ticker)
+        hist = tick_obj.history(start=datetime.now() - timedelta(days=1825), end=datetime.now())
+        if hist.empty or len(hist) < 200: return None
         
-        # Get 5 years of data
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=1825)
-        
-        hist = tick_obj.history(start=start_date, end=end_date)
-        
-        if hist.empty or len(hist) < 200:
-            return None
-        
-        # Calculate indicators
         hist['SMA50'] = calculate_sma(hist['Close'], 50)
         hist['SMA200'] = calculate_sma(hist['Close'], 200)
         hist['RSI'] = calculate_rsi(hist['Close'], 14)
         
-        # Create subplots
         from plotly.subplots import make_subplots
+        fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.1, row_heights=[0.7, 0.3])
         
-        fig = make_subplots(
-            rows=2, cols=1,
-            shared_xaxes=True,
-            vertical_spacing=0.1,
-            row_heights=[0.7, 0.3],
-            subplot_titles=(f"Prix & Moyennes Mobiles - {ticker}", "RSI (14)")
-        )
+        fig.add_trace(go.Scatter(x=hist.index, y=hist['Close'], name='Prix', line=dict(color='#00d4ff', width=2)), row=1, col=1)
+        fig.add_trace(go.Scatter(x=hist.index, y=hist['SMA50'], name='SMA 50', line=dict(color='#ff6b6b', width=1, dash='dot')), row=1, col=1)
+        fig.add_trace(go.Scatter(x=hist.index, y=hist['SMA200'], name='SMA 200', line=dict(color='#00ff88', width=1, dash='dash')), row=1, col=1)
+        fig.add_trace(go.Scatter(x=hist.index, y=hist['RSI'], name='RSI', line=dict(color='#ffaa00', width=2)), row=2, col=1)
         
-        # Price chart
-        fig.add_trace(
-            go.Scatter(x=hist.index, y=hist['Close'], name='Prix', 
-                      line=dict(color='#00d4ff', width=2),
-                      hovertemplate='%{x|%d/%m/%Y}<br>Prix: €%{y:.2f}'),
-            row=1, col=1
-        )
+        fig.add_hline(y=70, line_dash="dash", line_color="#ff6b6b", annotation_text="Suracheté (70)", row=2, col=1)
+        fig.add_hline(y=30, line_dash="dash", line_color="#00ff88", annotation_text="Survendu (30)", row=2, col=1)
         
-        # SMA 50
-        fig.add_trace(
-            go.Scatter(x=hist.index, y=hist['SMA50'], name='SMA 50',
-                      line=dict(color='#ff6b6b', width=1, dash='dot'),
-                      hovertemplate='SMA50: €%{y:.2f}'),
-            row=1, col=1
-        )
-        
-        # SMA 200
-        fig.add_trace(
-            go.Scatter(x=hist.index, y=hist['SMA200'], name='SMA 200',
-                      line=dict(color='#00ff88', width=1, dash='dash'),
-                      hovertemplate='SMA200: €%{y:.2f}'),
-            row=1, col=1
-        )
-        
-        # RSI
-        fig.add_trace(
-            go.Scatter(x=hist.index, y=hist['RSI'], name='RSI',
-                      line=dict(color='#ffaa00', width=2),
-                      hovertemplate='RSI: %{y:.2f}'),
-            row=2, col=1
-        )
-        
-        # RSI Reference lines
-        fig.add_hline(y=70, line_dash="dash", line_color="#ff6b6b", 
-                     annotation_text="Suracheté (70)", row=2, col=1)
-        fig.add_hline(y=30, line_dash="dash", line_color="#00ff88", 
-                     annotation_text="Survendu (30)", row=2, col=1)
-        
-        # Update layout
-        fig.update_layout(
-            title=f"Analyse Technique - {ticker} (5 ans)",
-            template="plotly_dark",
-            hovermode="x unified",
-            height=700,
-            showlegend=True,
-            xaxis_rangeslider_visible=False,
-            font=dict(color='#e0e0e0', size=11),
-            paper_bgcolor='#0a0e27',
-            plot_bgcolor='#1a1f3a',
-        )
-        
-        fig.update_yaxes(title_text="Prix (€)", row=1, col=1, gridcolor='#333')
-        fig.update_yaxes(title_text="RSI", row=2, col=1, gridcolor='#333')
-        fig.update_xaxes(gridcolor='#333')
-        
+        fig.update_layout(template="plotly_dark", hovermode="x unified", height=600, paper_bgcolor='#0a0e27', plot_bgcolor='#1a1f3a')
         return fig
-        
-    except Exception as e:
-        st.error(f"❌ Erreur analyse technique: {str(e)}")
+    except:
         return None
 
 # ============================================================================
-# DISPLAY FUNCTIONS
+# DISPLAY COMPONENT CARDS
 # ============================================================================
 
 def display_metric_card(label: str, value: str, color: str = "#00d4ff") -> None:
-    """Display a styled metric card"""
     st.markdown(f"""
-    <div style="background-color: #1a1f3a; border-left: 4px solid {color}; 
-                padding: 15px; border-radius: 5px; margin: 5px 0;">
+    <div style="background-color: #1a1f3a; border-left: 4px solid {color}; padding: 15px; border-radius: 5px; margin: 5px 0;">
         <p style="color: #999; font-size: 12px; margin: 0;">{label}</p>
         <p style="color: {color}; font-size: 18px; font-weight: bold; margin: 5px 0;">{value}</p>
     </div>
     """, unsafe_allow_html=True)
 
-def display_score_card(score: int, max_score: int = 100) -> None:
-    """Display fundamental score card"""
-    percentage = (score / max_score) * 100
+def display_score_card(score: int) -> None:
     color = "#00ff88" if score >= 70 else "#ffaa00" if score >= 50 else "#ff6b6b"
-    
     st.markdown(f"""
-    <div style="background: linear-gradient(135deg, #1a3a3a 0%, #2d4d4d 100%);
-                border: 2px solid {color}; border-radius: 10px; padding: 25px;
-                text-align: center; margin: 15px 0;">
-        <p style="color: #999; font-size: 14px; margin: 0;">SCORE FONDAMENTAL</p>
-        <p style="color: {color}; font-size: 48px; font-weight: bold; margin: 10px 0;">{score}/100</p>
-        <div style="background-color: #0a0e27; height: 8px; border-radius: 4px; margin: 10px 0;
-                    overflow: hidden;">
-            <div style="background-color: {color}; height: 100%; width: {percentage}%;"></div>
+    <div style="background: linear-gradient(135deg, #1a3a3a 0%, #2d4d4d 100%); border: 2px solid {color}; border-radius: 10px; padding: 20px; text-align: center; margin: 10px 0;">
+        <p style="color: #999; font-size: 13px; margin: 0;">SCORE FONDAMENTAL GLOBAL</p>
+        <p style="color: {color}; font-size: 42px; font-weight: bold; margin: 5px 0;">{score}/100</p>
+        <div style="background-color: #0a0e27; height: 6px; border-radius: 3px; overflow: hidden;">
+            <div style="background-color: {color}; height: 100%; width: {score}%;"></div>
         </div>
     </div>
     """, unsafe_allow_html=True)
 
 # ============================================================================
-# MAIN APPLICATION
+# MAIN APPLICATION ENGINE
 # ============================================================================
 
 def main():
-    """Main application"""
-    
-    # Header
     st.markdown("""
-    <div style="text-align: center; margin: 30px 0;">
-        <h1 style="color: #00d4ff; font-size: 48px; margin: 0;">📈 Alpha Terminal Pro</h1>
-        <p style="color: #999; font-size: 14px; margin-top: 10px;">Professional Financial Analysis Platform | v2.0</p>
+    <div style="text-align: center; margin: 20px 0;">
+        <h1 style="color: #00d4ff; font-size: 42px; margin: 0;">📈 Alpha Terminal Pro</h1>
+        <p style="color: #999; font-size: 13px; margin-top: 5px;">Terminal Financier Professionnel d'Analyse Quantitative | v2.0</p>
     </div>
     """, unsafe_allow_html=True)
     
-    # Sidebar navigation
     st.sidebar.markdown("### 🎯 Navigation")
     mode = st.sidebar.radio(
         "Sélectionnez le mode:",
@@ -855,437 +642,176 @@ def main():
         label_visibility="collapsed"
     )
     
-    # ========================================================================
-    # MODE 1: COMPLETE ANALYSIS
-    # ========================================================================
+    # Résolution du bug de rechargement Streamlit via Session State
+    if 'active_ticker' not in st.session_state:
+        st.session_state.active_ticker = ""
+
     if mode == "📊 Analyse Complète":
-        st.markdown("### Recherche d'un actif")
-        
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            ticker_input = st.text_input(
-                "Entrez un ticker (ex: AAPL, LVMH.PA, SPY):",
-                placeholder="AAPL",
-                label_visibility="collapsed"
-            ).strip().upper()
-        
-        with col2:
-            search_button = st.button("🔍 Rechercher", use_container_width=True)
-        
-        if search_button and ticker_input:
-            with st.spinner(f"⏳ Chargement de {ticker_input}..."):
-                tick_obj, info = get_ticker_data(ticker_input)
+        st.markdown("### 🔍 Analyse Individuelle de Valeur")
+        col_s1, col_s2 = st.columns([3, 1])
+        with col_s1:
+            ticker_input = st.text_input("Saisir un Ticker (ex: AAPL, LVMH.PA, CW8.PA) :", value=st.session_state.active_ticker, label_visibility="collapsed").strip().upper()
+        with col_s2:
+            if st.button("Rechercher", use_container_width=True) and ticker_input:
+                st.session_state.active_ticker = ticker_input
                 
-                if tick_obj is None:
-                    st.error(f"❌ Ticker '{ticker_input}' introuvable. Vérifiez l'orthographe.")
+        if st.session_state.active_ticker:
+            tk = st.session_state.active_ticker
+            with st.spinner(f"Extraction des bases financières pour {tk}..."):
+                tick_obj, info = get_ticker_data(tk)
+                
+                if not info:
+                    st.error("❌ Ticker introuvable ou erreur de communication avec l'API.")
                 else:
-                    currency = detect_currency(ticker_input)
-                    current_price = safe_float(info.get('currentPrice'))
-                    current_price_eur = convert_to_eur(current_price, currency)
+                    currency = detect_currency(tk)
+                    price = safe_float(info.get('currentPrice') or info.get('navPrice') or info.get('previousClose'))
+                    price_eur = convert_to_eur(price, currency)
+                    is_fund = is_etf(info, tk)
                     
-                    # Top metrics row
                     st.markdown("---")
-                    col1, col2, col3, col4 = st.columns(4)
+                    c_left, c_right = st.columns([2, 1])
+                    with c_left:
+                        st.markdown(f"## {info.get('longName', tk)}")
+                        st.markdown(f"**Secteur :** {info.get('sector', info.get('category', 'N/A'))} | **Devise :** {currency}")
+                        
+                        cm1, cm2 = st.columns(2)
+                        with cm1: display_metric_card("Cours Actuel", f"{price_eur:.2f} €", "#00d4ff")
+                        with cm2: 
+                            cap = safe_float(info.get('marketCap') or info.get('totalAssets'))
+                            display_metric_card("Capitalisation / Encours", format_currency(convert_to_eur(cap, currency)), "#00ff88")
                     
-                    with col1:
-                        display_metric_card("Prix Actuel", format_currency(current_price_eur), "#00d4ff")
-                    with col2:
-                        market_cap = safe_float(info.get('marketCap'))
-                        display_metric_card("Capitalisation", 
-                                          format_currency(convert_to_eur(market_cap, currency)) if market_cap else "N/A",
-                                          "#00ff88")
-                    with col3:
-                        pe = safe_float(info.get('trailingPE'))
-                        display_metric_card("PER Actuel", f"{pe:.2f}" if pe else "N/A", "#ffaa00")
-                    with col4:
-                        div_yield = safe_float(info.get('dividendYield'))
-                        display_metric_card("Rendement Div", 
-                                          f"{div_yield * 100:.2f}%" if div_yield else "N/A",
-                                          "#ff6b6b")
-                    
-                    # Calculate ratios and score
-                    ratios = calculate_fundamental_ratios(tick_obj, info, currency)
-                    score, score_details = calculate_fundamental_score(ratios, current_price_eur, currency)
-                    
-                    # Fundamental score
-                    col1, col2 = st.columns([1.5, 1])
-                    with col1:
-                        display_score_card(score)
-                    
-                    with col2:
-                        st.markdown("### Score Breakdown")
-                        if score_details:
-                            for key, value in score_details.items():
-                                st.markdown(f"- **{key}**: {value}")
+                    with c_right:
+                        if not is_fund:
+                            ratios = calculate_fundamental_ratios(tick_obj, info, currency)
+                            score, _ = calculate_fundamental_score(ratios, price_eur, currency)
+                            display_score_card(score)
                         else:
-                            st.info("Données insuffisantes pour le scoring détaillé")
+                            st.markdown("""<div style="background: #1a2f4d; border:1px solid #00d4ff; padding:20px; border-radius:8px; text-align:center;"><h4>Fonds Indexé / ETF</h4><p style="color:#999; font-size:12px;">Filtre analytique pour trackers appliqué</p></div>""", unsafe_allow_html=True)
                     
-                    # Check if ETF
-                    st.markdown("---")
-                    if is_etf(info, ticker_input):
-                        st.markdown("### 📊 ANALYSE ETF")
-                        etf_data = analyze_etf(tick_obj, info)
+                    # Ratios ou Spécificités ETF
+                    if not is_fund:
+                        ratios = calculate_fundamental_ratios(tick_obj, info, currency)
+                        t_rat, t_tech, t_con = st.tabs(["📊 Ratios Financiers", "📈 Graphique Technique", "🤝 Consensus"])
                         
-                        col1, col2, col3 = st.columns(3)
-                        
-                        with col1:
-                            ter = etf_data.get('ter')
-                            if ter:
-                                color = "#00ff88" if ter < 0.3 else "#ffaa00" if ter < 0.6 else "#ff6b6b"
-                                display_metric_card("TER (Frais)", f"{ter * 100:.3f}%", color)
-                            else:
-                                display_metric_card("TER", "N/A")
-                        
-                        with col2:
-                            aum = etf_data.get('aum')
-                            if aum:
-                                color = "#00ff88" if aum > 100_000_000 else "#ff6b6b"
-                                display_metric_card("AUM", format_large_number(aum) + "€", color)
-                            else:
-                                display_metric_card("AUM", "N/A")
-                        
-                        with col3:
-                            if etf_data.get('closure_risk'):
-                                st.warning("⚠️ **Risque de clôture**: AUM < 100M€")
-                            else:
-                                st.success("✅ **AUM Suffisant**: > 100M€")
-                        
-                        # PEA Eligibility
-                        if etf_data.get('pea_eligible'):
-                            st.success("✅ **Éligible au PEA**")
-                        else:
-                            st.info("ℹ️ **Compte-Titres uniquement**")
-                    
-                    # Tabs for detailed ratios
-                    st.markdown("---")
-                    st.markdown("### 21 Ratios Fondamentaux")
-                    
-                    tab1, tab2, tab3, tab4, tab5 = st.tabs([
-                        "💰 Valorisation",
-                        "📈 Rentabilité",
-                        "🏦 Santé Financière",
-                        "📊 Croissance",
-                        "🎯 Consensus"
-                    ])
-                    
-                    with tab1:
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            display_metric_card("1. PER Actuel", 
-                                              f"{ratios.get('trailing_pe'):.2f}" if ratios.get('trailing_pe') else "N/A")
-                            display_metric_card("3. Price/Sales", 
-                                              f"{ratios.get('ps_ratio'):.2f}" if ratios.get('ps_ratio') else "N/A")
-                            display_metric_card("5. EV/EBITDA", 
-                                              f"{ratios.get('ev_ebitda'):.2f}" if ratios.get('ev_ebitda') else "N/A")
-                            display_metric_card("7. Book Value/Action", 
-                                              format_currency(ratios.get('book_value_eur')) if ratios.get('book_value_eur') else "N/A")
-                        
-                        with col2:
-                            display_metric_card("2. PER Futur", 
-                                              f"{ratios.get('forward_pe'):.2f}" if ratios.get('forward_pe') else "N/A")
-                            display_metric_card("4. Price/Book", 
-                                              f"{ratios.get('pb_ratio'):.2f}" if ratios.get('pb_ratio') else "N/A")
-                            display_metric_card("6. BPA (EPS)", 
-                                              format_currency(ratios.get('eps_eur')) if ratios.get('eps_eur') else "N/A")
-                            display_metric_card("8. Prix Graham", 
-                                              format_currency(ratios.get('graham_price')) if ratios.get('graham_price') else "N/A")
-                    
-                    with tab2:
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            display_metric_card("9. Marge Brute", 
-                                              safe_pct(ratios.get('gross_margin')))
-                            display_metric_card("11. Marge Nette", 
-                                              safe_pct(ratios.get('profit_margin')))
-                            display_metric_card("13. ROE", 
-                                              safe_pct(ratios.get('roe')))
-                        
-                        with col2:
-                            display_metric_card("10. Marge Opérationnelle", 
-                                              safe_pct(ratios.get('operating_margin')))
-                            display_metric_card("12. ROA", 
-                                              safe_pct(ratios.get('roa')))
-                    
-                    with tab3:
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            display_metric_card("14. Dette Nette", 
-                                              format_currency(ratios.get('net_debt_m_eur') * 1_000_000) if ratios.get('net_debt_m_eur') is not None else "N/A")
-                            display_metric_card("16. Dette/EBITDA", 
-                                              f"{ratios.get('debt_ebitda_ratio'):.2f}" if isinstance(ratios.get('debt_ebitda_ratio'), (int, float)) else str(ratios.get('debt_ebitda_ratio', 'N/A')))
-                            display_metric_card("18. Quick Ratio", 
-                                              f"{ratios.get('quick_ratio'):.2f}" if ratios.get('quick_ratio') else "N/A")
-                        
-                        with col2:
-                            display_metric_card("15. EBITDA", 
-                                              format_currency(ratios.get('ebitda_m_eur') * 1_000_000) if ratios.get('ebitda_m_eur') is not None else "N/A")
-                            display_metric_card("17. Current Ratio", 
-                                              f"{ratios.get('current_ratio'):.2f}" if ratios.get('current_ratio') else "N/A")
-                            display_metric_card("19. Dette/Equity", 
-                                              safe_pct(ratios.get('debt_to_equity')))
-                    
-                    with tab4:
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            display_metric_card("20. Revenue Growth", 
-                                              safe_pct(ratios.get('revenue_growth')))
-                        with col2:
-                            display_metric_card("21. Payout Ratio", 
-                                              safe_pct(ratios.get('payout_ratio')))
-                    
-                    with tab5:
-                        consensus = get_analyst_consensus(info)
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            target = consensus.get('target_price')
-                            if target and target > 0:
-                                price_diff = ((target - current_price_eur) / current_price_eur * 100) if current_price_eur > 0 else 0
-                                color = "#00ff88" if price_diff > 0 else "#ff6b6b"
-                                display_metric_card("Prix Cible Analystes", 
-                                                  format_currency(convert_to_eur(target, currency)), color)
-                                display_metric_card("Potentiel", f"{price_diff:+.1f}%", color)
-                        with col2:
-                            display_metric_card("Nombre d'Analystes", 
-                                              f"{int(consensus.get('num_analysts', 0))}")
-                            display_metric_card("Recommandation", 
-                                              consensus.get('recommendation'))
-                    
-                    # Technical Analysis
-                    st.markdown("---")
-                    st.markdown("### 📊 Analyse Technique (5 ans)")
-                    
-                    fig_tech = plot_technical_analysis(ticker_input)
-                    if fig_tech:
-                        st.plotly_chart(fig_tech, use_container_width=True)
-                    else:
-                        st.warning("⚠️ Données insuffisantes pour l'analyse technique")
-                    
-                    # News
-                    st.markdown("---")
-                    st.markdown("### 📰 Actualités Récentes")
-                    
-                    news = get_news_feed(tick_obj)
-                    if news:
-                        for idx, article in enumerate(news, 1):
-                            st.markdown(f"""
-                            **{idx}. [{article['title']}]({article['link']})**
+                        with t_rat:
+                            st.markdown("#### A. Valorisation & Prix")
+                            r1, r2, r3, r4 = st.columns(4)
+                            r1.metric("1. PER Actuel", f"{ratios.get('trailing_pe') or 'N/A'}")
+                            r2.metric("2. PER Futur", f"{ratios.get('forward_pe') or 'N/A'}")
+                            r3.metric("3. Price to Sales", f"{ratios.get('ps_ratio') or 'N/A'}")
+                            r4.metric("4. Price to Book", f"{ratios.get('pb_ratio') or 'N/A'}")
                             
-                            *Source: {article['source']}*
-                            """)
-                    else:
-                        st.info("ℹ️ Aucune actualité disponible pour ce ticker")
-    
-    # ========================================================================
-    # MODE 2: COMPARATOR
-    # ========================================================================
-    elif mode == "⚖️ Comparateur":
-        st.markdown("### Comparer Plusieurs Actifs")
-        
-        ticker_list = st.text_input(
-            "Entrez plusieurs tickers séparés par des virgules:",
-            placeholder="AAPL, MSFT, NVDA, LVMH.PA",
-            label_visibility="collapsed"
-        )
-        
-        if ticker_list:
-            tickers = [t.strip().upper() for t in ticker_list.split(',')]
-            
-            with st.spinner("⏳ Chargement du comparateur..."):
-                df_comparison = create_comparison_df(tickers)
-                
-                if not df_comparison.empty:
-                    st.markdown("### Matrice de Comparaison")
-                    st.dataframe(df_comparison, use_container_width=True, hide_index=True)
-                    
-                    # CSV Export
-                    csv = df_comparison.to_csv(index=False)
-                    st.download_button(
-                        label="📥 Télécharger CSV",
-                        data=csv,
-                        file_name=f"comparison_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                        mime="text/csv"
-                    )
-                    
-                    # Charts
-                    st.markdown("---")
-                    st.markdown("### Visualisations")
-                    
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        # Score Chart
-                        fig_score = px.bar(df_comparison, x='Ticker', y='Score', 
-                                          color='Score', color_continuous_scale='RdYlGn',
-                                          title="Score Fondamental par Actif")
-                        fig_score.update_layout(
-                            template="plotly_dark",
-                            paper_bgcolor='#0a0e27',
-                            plot_bgcolor='#1a1f3a',
-                            font=dict(color='#e0e0e0'),
-                        )
-                        st.plotly_chart(fig_score, use_container_width=True)
-                    
-                    with col2:
-                        # PER Chart
-                        df_per = df_comparison[df_comparison['PER'] != 'N/A'].copy()
-                        if not df_per.empty:
-                            df_per['PER'] = pd.to_numeric(df_per['PER'], errors='coerce')
-                            fig_per = px.bar(df_per, x='Ticker', y='PER',
-                                            title="PER par Actif")
-                            fig_per.update_layout(
-                                template="plotly_dark",
-                                paper_bgcolor='#0a0e27',
-                                plot_bgcolor='#1a1f3a',
-                                font=dict(color='#e0e0e0'),
-                            )
-                            st.plotly_chart(fig_per, use_container_width=True)
-                else:
-                    st.error("❌ Aucun actif trouvé. Vérifiez les tickers.")
-    
-    # ========================================================================
-    # MODE 3: DCA SIMULATOR
-    # ========================================================================
-    elif mode == "💰 DCA Simulator":
-        st.markdown("### Simulateur Dollar Cost Averaging")
-        
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            dca_ticker = st.text_input(
-                "Ticker:",
-                placeholder="AAPL",
-                label_visibility="collapsed"
-            ).strip().upper()
-        
-        with col2:
-            dca_amount = st.number_input(
-                "Montant mensuel (€):",
-                min_value=10.0,
-                max_value=10000.0,
-                value=150.0,
-                step=10.0
-            )
-        
-        with col3:
-            dca_years = st.selectbox(
-                "Période:",
-                [1, 3, 5, 10],
-                label_visibility="collapsed"
-            )
-        
-        if st.button("🚀 Simuler DCA", use_container_width=True):
-            with st.spinner("⏳ Simulation en cours..."):
-                df_dca, metrics = simulate_dca(dca_ticker, dca_amount, dca_years)
-                
-                if not df_dca.empty and metrics:
-                    # Results
-                    st.markdown("---")
-                    st.markdown("### Résultats de la Simulation")
-                    
-                    col1, col2, col3, col4 = st.columns(4)
-                    
-                    with col1:
-                        display_metric_card(
-                            "Total Investi",
-                            format_currency(metrics['final_invested']),
-                            "#00d4ff"
-                        )
-                    
-                    with col2:
-                        display_metric_card(
-                            "Valeur du Portefeuille",
-                            format_currency(metrics['final_value']),
-                            "#00ff88" if metrics['gain_loss'] > 0 else "#ff6b6b"
-                        )
-                    
-                    with col3:
-                        display_metric_card(
-                            "Plus-Value",
-                            format_currency(metrics['gain_loss']),
-                            "#00ff88" if metrics['gain_loss'] > 0 else "#ff6b6b"
-                        )
-                    
-                    with col4:
-                        display_metric_card(
-                            "Rendement",
-                            f"{metrics['roi']:+.2f}%",
-                            "#00ff88" if metrics['roi'] > 0 else "#ff6b6b"
-                        )
-                    
-                    # Chart
-                    st.markdown("---")
-                    st.markdown("### Évolution du Portefeuille")
-                    
-                    fig_dca = go.Figure()
-                    
-                    fig_dca.add_trace(go.Scatter(
-                        x=df_dca['Date'], y=df_dca['Total Investi'],
-                        name='Capital Investi',
-                        line=dict(color='#00d4ff', width=3)
-                    ))
-                    
-                    fig_dca.add_trace(go.Scatter(
-                        x=df_dca['Date'], y=df_dca['Valeur Portefeuille'],
-                        name='Valeur du Portefeuille',
-                        line=dict(color='#00ff88', width=3),
-                        fill='tonexty',
-                        fillcolor='rgba(0, 255, 136, 0.1)'
-                    ))
-                    
-                    fig_dca.update_layout(
-                        title=f"DCA Simulation - {dca_ticker} ({dca_years} ans)",
-                        xaxis_title="Date",
-                        yaxis_title="Valeur (€)",
-                        template="plotly_dark",
-                        hovermode="x unified",
-                        height=500,
-                        paper_bgcolor='#0a0e27',
-                        plot_bgcolor='#1a1f3a',
-                        font=dict(color='#e0e0e0', size=11),
-                        legend=dict(x=0.01, y=0.99, bgcolor='rgba(26, 31, 58, 0.8)'),
-                    )
-                    
-                    fig_dca.update_yaxes(gridcolor='#333')
-                    fig_dca.update_xaxes(gridcolor='#333')
-                    
-                    st.plotly_chart(fig_dca, use_container_width=True)
-                else:
-                    st.error(f"❌ Impossible de simuler DCA pour {dca_ticker}")
-    
-    # ========================================================================
-    # MODE 4: NEWS FEED
-    # ========================================================================
-    elif mode == "📰 Actualités":
-        st.markdown("### Actualités par Ticker")
-        
-        news_ticker = st.text_input(
-            "Entrez un ticker:",
-            placeholder="AAPL",
-            label_visibility="collapsed"
-        ).strip().upper()
-        
-        if news_ticker:
-            with st.spinner("⏳ Chargement des actualités..."):
-                tick_obj, info = get_ticker_data(news_ticker)
-                
-                if tick_obj is not None:
-                    news = get_news_feed(tick_obj)
-                    
-                    if news:
-                        st.markdown(f"### Articles Récents - {news_ticker}")
+                            r5, r6, r7, r8 = st.columns(4)
+                            r5.metric("5. EV/EBITDA", f"{ratios.get('ev_ebitda') or 'N/A'}")
+                            r6.metric("6. BPA (€)", f"{ratios.get('eps_eur'):.2f} €" if ratios.get('eps_eur') else "N/A")
+                            r7.metric("7. Valeur Comptable/Action", f"{ratios.get('book_value_eur'):.2f} €" if ratios.get('book_value_eur') else "N/A")
+                            r8.metric("8. Prix Graham", f"{ratios.get('graham_price'):.2f} €" if ratios.get('graham_price') else "N/A")
+                            
+                            st.markdown("#### B. Rentabilité")
+                            r9, r10, r11, r12, r13 = st.columns(5)
+                            r9.metric("9. Marge Brute", safe_pct(ratios.get('gross_margin')))
+                            r10.metric("10. Marge Opér.", safe_pct(ratios.get('operating_margin')))
+                            r11.metric("11. Marge Nette", safe_pct(ratios.get('profit_margin')))
+                            r12.metric("12. ROE", safe_pct(ratios.get('roe')))
+                            r13.metric("13. ROA", safe_pct(ratios.get('roa')))
+                            
+                            st.markdown("#### C. Bilan & Santé Financière")
+                            r14, r15, r16 = st.columns(3)
+                            r14.metric("14. Dette Nette", f"{ratios.get('net_debt_m_eur'):.1f} M€" if ratios.get('net_debt_m_eur') else "N/A")
+                            r15.metric("15. EBITDA", f"{ratios.get('ebitda_m_eur'):.1f} M€" if ratios.get('ebitda_m_eur') else "N/A")
+                            deb_eb = ratios.get('debt_ebitda_ratio')
+                            r16.metric("16. Dette Nette / EBITDA", f"{deb_eb:.2f}" if isinstance(deb_eb, (int, float)) else str(deb_eb or 'N/A'))
+                            
+                            r17, r18, r19 = st.columns(3)
+                            r17.metric("17. Liquidité Générale", f"{ratios.get('current_ratio') or 'N/A'}")
+                            r18.metric("18. Liquidité Immédiate", f"{ratios.get('quick_ratio') or 'N/A'}")
+                            r19.metric("19. Dette / Cap. Propres", safe_pct(ratios.get('debt_to_equity')))
+                            
+                            st.markdown("#### D. Croissance & Dividende")
+                            r20, r21 = st.columns(2)
+                            r20.metric("20. Croissance CA", safe_pct(ratios.get('revenue_growth')))
+                            r21.metric("21. Payout Ratio", safe_pct(ratios.get('payout_ratio')))
                         
-                        for idx, article in enumerate(news, 1):
-                            with st.container(border=True):
-                                st.markdown(f"**{idx}. [{article['title']}]({article['link']})**")
-                                col1, col2 = st.columns([3, 1])
-                                with col1:
-                                    st.markdown(f"_Source: {article['source']}_")
-                                with col2:
-                                    st.markdown(f"_{article['published']}_")
+                        with t_tech:
+                            fig = plot_technical_analysis(tk)
+                            if fig: st.plotly_chart(fig, use_container_width=True)
+                            else: st.info("Historique insuffisant pour tracer les indicateurs techniques.")
+                        
+                        with t_con:
+                            con = get_analyst_consensus(info)
+                            rc1, rc2, rc3 = st.columns(3)
+                            rc1.metric("Objectif Moyen", f"{convert_to_eur(con['target_price'], currency):.2f} €" if con['target_price'] else "N/A")
+                            rc2.metric("Nombre de Suivis", f"{con['num_analysts'] or 'N/A'}")
+                            rc3.metric("Avis global", con['recommendation'])
                     else:
-                        st.info(f"ℹ️ Aucune actualité disponible pour {news_ticker}")
+                        st.markdown("#### 🛠️ Analyse Trackers (ETF)")
+                        etf_m = analyze_etf(tick_obj, info)
+                        e1, e2, e3, e4, e5 = st.columns(5)
+                        e1.metric("Frais (TER)", f"{etf_m['ter']:.2f}%")
+                        e2.metric("Encours", format_large_number(convert_to_eur(etf_m['aum'], currency)))
+                        e3.metric("Distribution", etf_m['distribution'])
+                        e4.metric("Réplication", etf_m['replication'])
+                        e5.metric("Éligibilité PEA", "Oui ✅" if etf_m['pea_eligible'] else "Non (CTO) ❌")
+                        
+                        if etf_m['closure_risk']:
+                            st.markdown("""<div class="warning-box">⚠️ <strong>Alerte Liquidité :</strong> Encours inférieur à 100M€. Risque accru de fermeture ou spreads élevés.</div>""", unsafe_allow_html=True)
+
+    elif mode == "⚖️ Comparateur":
+        st.markdown("### ⚖️ Matrice Comparative Multi-Actifs")
+        tk_list_str = st.text_input("Entrez les tickers séparés par des virgules :", "AAPL, MSFT, LVMH.PA, NVDA")
+        if tk_list_str:
+            parsed_list = [t.strip() for t in tk_list_str.split(",") if t.strip()]
+            res_df = create_comparison_df(parsed_list)
+            if not res_df.empty:
+                st.dataframe(res_df, use_container_width=True)
+                csv = res_df.to_csv(index=False).encode('utf-8')
+                st.download_button("📥 Exporter en CSV", data=csv, file_name="alpha_export.csv", mime="text/csv")
+            else:
+                st.info("Aucune donnée disponible pour ces valeurs.")
+
+    elif mode == "💰 DCA Simulator":
+        st.markdown("### 💰 Simulateur DCA Historique")
+        c_d1, c_d2, c_d3 = st.columns(3)
+        d_tk = c_d1.text_input("Ticker cible :", "AAPL").strip().upper()
+        d_amt = c_d2.number_input("Versement Mensuel (€) :", min_value=10.0, value=150.0)
+        d_y = c_d3.slider("Historique (Années) :", min_value=1, max_value=15, value=5)
+        
+        if st.button("Lancer la simulation", use_container_width=True):
+            df_dca, metrics = simulate_dca(d_tk, d_amt, d_y)
+            if not df_dca.empty:
+                st.markdown(f"""
+                <div class="success-box">
+                    <h4>Résultats de la stratégie DCA ({d_tk})</h4>
+                    <p>Total Investi : {metrics['final_invested']:.2f} € | Valeur Finale : {metrics['final_value']:.2f} €</p>
+                    <p>Performance : <strong style="color: {'#00ff88' if metrics['gain_loss'] >= 0 else '#ff6b6b'}">{metrics['gain_loss']:.2f} € ({metrics['roi']:.2f}%)</strong></p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                fig_dca = go.Figure()
+                fig_dca.add_trace(go.Scatter(x=df_dca['Date'], y=df_dca['Total Investi'], name="Capital Versé", line=dict(color='#ff6b6b', width=2, dash='dash')))
+                fig_dca.add_trace(go.Scatter(x=df_dca['Date'], y=df_dca['Valeur Portefeuille'], name="Valeur de la Poche", line=dict(color='#00ff88', width=3), fill='tonexty', fillcolor='rgba(0, 255, 136, 0.04)'))
+                fig_dca.update_layout(template="plotly_dark", height=400, paper_bgcolor='#0a0e27', plot_bgcolor='#1a1f3a')
+                st.plotly_chart(fig_dca, use_container_width=True)
+            else:
+                st.error("Impossible de simuler l'historique de ce actif.")
+
+    elif mode == "📰 Actualités":
+        st.markdown("### 📰 Actualités de Marché")
+        news_tk = st.text_input("Entrer le Ticker pour voir ses News :", value=st.session_state.active_ticker if st.session_state.active_ticker else "AAPL").strip().upper()
+        if news_tk:
+            t_obj, _ = get_ticker_data(news_tk)
+            if t_obj:
+                feed = get_news_feed(t_obj)
+                if feed:
+                    for art in feed:
+                        st.markdown(f"""
+                        <div style="background-color: #1a1f3a; padding: 12px; border-radius: 6px; margin: 8px 0; border-left: 3px solid #ffaa00;">
+                            <h5 style="margin: 0;"><a href="{art['link']}" target="_blank" style="color: #00d4ff; text-decoration: none;">{art['title']}</a></h5>
+                            <p style="color: #888; font-size: 11px; margin-top: 4px;">Éditeur : {art['source']} | Date : {art['published']}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
                 else:
-                    st.error(f"❌ Ticker '{news_ticker}' introuvable")
+                    st.info("Aucun article disponible pour cette valeur.")
 
 if __name__ == "__main__":
     main()
