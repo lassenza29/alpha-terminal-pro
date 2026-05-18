@@ -5,96 +5,105 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import math
 from datetime import datetime
+import numpy as np
 
-# Configuration de la page
-st.set_page_config(page_title="Analyse Financière", layout="wide")
+# ==============================================================================
+# 0. CONFIGURATION DE LA PAGE & DESIGN UI/UX (CSS PERSONNALISÉ)
+# ==============================================================================
+st.set_page_config(
+    page_title="Alpha Terminal Pro | Terminal Financier Institutionnel",
+    page_icon="🏛️",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-def get_fx_rate(currency):
-    if currency == "EUR":
+# Injection de styles CSS pour un rendu sombre haut de gamme, épuré et corporate
+st.markdown("""
+<style>
+    /* Global Background and Typography */
+    .stApp {
+        background-color: #0d1117;
+        color: #c9d1d9;
+    }
+    
+    /* Custom Financial Metric Card */
+    .fin-card {
+        background-color: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 10px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.15);
+    }
+    .fin-card-title {
+        font-size: 0.85rem;
+        color: #8b949e;
+        text-transform: uppercase;
+        margin-bottom: 5px;
+        font-weight: 600;
+    }
+    .fin-card-value {
+        font-size: 1.4rem;
+        color: #58a6ff;
+        font-weight: bold;
+    }
+    .fin-card-sub {
+        font-size: 0.75rem;
+        color: #8b949e;
+        margin-top: 5px;
+    }
+    
+    /* Score Indicator Styles */
+    .score-box {
+        padding: 20px;
+        border-radius: 10px;
+        text-align: center;
+        font-weight: bold;
+        border: 1px solid #30363d;
+    }
+    
+    /* Headers customization */
+    h1, h2, h3 {
+        color: #f0f6fc !important;
+        font-weight: 500 !important;
+    }
+    
+    /* Status styling overrides */
+    div[data-testid="stNotification"] {
+        background-color: #161b22 !important;
+        border: 1px solid #30363d !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+
+# ==============================================================================
+# 1. PARSING DÉFENSIF & CONFIGURATION DES DEVISES (ROBUSTESSE)
+# ==============================================================================
+@st.cache_data(ttl=3600)
+def get_fx_rate(currency_code):
+    """
+    Récupère le taux de change pour convertir une devise d'origine vers l'EURO (€).
+    Inclut des valeurs de secours (fallbacks) strictes en cas de panne de l'API.
+    """
+    if not currency_code:
         return 1.0
-    try:
-        ticker = f"{currency}EUR=X"
-        data = yf.Ticker(ticker).history(period="1d")
-        return data['Close'].iloc[-1]
-    except:
-        return 1.0
+    
+    curr_upper = currency_code.upper().strip()
+    
+    # Traitement spécifique pour la devise de Londres (Pence Sterling)
+    is_pence = False
+    if curr_upper in ["GBp", "GBX"]:
+        curr_upper = "GBP"
+        is_pence = True
+        
+    if curr_upper == "EUR":
+        return 0.01 if is_pence else 1.0
 
-def calculer_rsi(data, window=14):
-    delta = data.diff()
-    # CORRECTION : Ajout du "=" manquant ici
-    gain = (delta.where(delta > 0, 0)).rolling(window=window).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=window).mean()
-    rs = gain / loss
-    rsi = 100 - (100 / (1 + rs))
-    return rsi
-
-def extraire_donnees(ticker_symbole):
-    try:
-        ticker = yf.Ticker(ticker_symbole)
-        info = ticker.info
-        
-        nom = info.get('longName') or info.get('shortName') or ticker_symbole
-        devise = info.get('currency', 'USD')
-        taux = get_fx_rate(devise)
-        
-        # Sécurité pour éviter les crashs si yfinance renvoie du vide (None)
-        prix_brut = info.get('currentPrice') or info.get('regularMarketPrice') or info.get('previousClose') or 0
-        prix = prix_brut * taux
-        
-        cap_brut = info.get('marketCap') or 0
-        cap = (cap_brut / 1_000_000) * taux
-        
-        dette_brut = info.get('totalDebt') or 0
-        dette = (dette_brut / 1_000_000) * taux
-        
-        treso_brut = info.get('totalCash') or 0
-        treso = (treso_brut / 1_000_000) * taux
-        dette_nette = dette - treso
-        
-        ebitda_brut = info.get('ebitda') or 1
-        ebitda = (ebitda_brut / 1_000_000) * taux
-        ratio_dette = dette_nette / ebitda if ebitda != 0 else 0
-        
-        per = info.get('trailingPE') or 0
-        bna_brut = info.get('trailingEps') or 0
-        bna = bna_brut * taux
-        
-        return {
-            "nom": nom, "prix": prix, "cap": cap, "dette_nette": dette_nette,
-            "ratio_dette": ratio_dette, "per": per, "bna": bna, "ticker": ticker
-        }
-    except:
-        return None
-
-# --- INTERFACE GRAPHIQUE ---
-st.title("Analyse Fondamentale & Technique")
-
-ticker_input = st.text_input("Entrez le symbole (ex: AAPL, MC.PA) :", "AAPL")
-
-if ticker_input:
-    data = extraire_donnees(ticker_input)
-    if data:
-        st.header(f"{data['nom']} ({ticker_input.upper()})")
-        
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Prix (€)", f"{data['prix']:.2f}")
-        col2.metric("Cap. (M€)", f"{data['cap']:.0f}")
-        col3.metric("Ratio Dette/EBITDA", f"{data['ratio_dette']:.2f}")
-        
-        # Graphique Évolution & RSI
-        hist = data['ticker'].history(period="1y")
-        if not hist.empty:
-            hist['RSI'] = calculer_rsi(hist['Close'])
-            
-            fig = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.7, 0.3], vertical_spacing=0.05)
-            fig.add_trace(go.Scatter(x=hist.index, y=hist['Close'], name="Prix (€)", line=dict(color="turquoise")), row=1, col=1)
-            fig.add_trace(go.Scatter(x=hist.index, y=hist['RSI'], name="RSI (14)", line=dict(color="purple")), row=2, col=1)
-            
-            # Lignes guides pour le RSI
-            fig.add_hline(y=70, line_dash="dot", line_color="red", row=2, col=1)
-            fig.add_hline(y=30, line_dash="dot", line_color="green", row=2, col=1)
-            
-            fig.update_layout(height=500, template="plotly_dark", showlegend=False)
-            st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.error("Action introuvable ou erreur de chargement des données.")
+    # Table de secours immuable en cas de défaillance réseau ou d'API
+    fallbacks = {
+        "USD": 0.92,
+        "GBP": 1.17,
+        "CHF": 1.04,
+        "CAD": 0.68,
+        "JPY":
